@@ -1,0 +1,12 @@
+<component name="libraryTable">
+  <library name="Gradle: com.rvalerio:fgchecker:1.1.0@aar">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/transforms-2/files-2.1/9734c3d5154c1925ccb1705eecc85d7b/jars/classes.jar!/" />
+      <root url="file://$USER_HOME$/.gradle/caches/transforms-2/files-2.1/9734c3d5154c1925ccb1705eecc85d7b/res" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.rvalerio/fgchecker/1.1.0/de310a5386f1b005f1a1735dd37f18aba4c74f87/fgchecker-1.1.0-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

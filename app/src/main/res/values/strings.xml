@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Vodafone 5G</string>
+    <string name="title_activity_welcome">Home Screen</string>
+    <string name="next">ATTIVA</string>
+    <string name="skip">SKIP</string>
+    <string name="start">FINE</string>
+
+    <string name="slide_1_title">Benvenuto 5G!</string>
+    <string name="slide_1_desc">Attiva le funzionalità avanzate della tua rete Vodafone come nell\'immagine</string>
+
+    <string name="slide_2_title">Massima velocità</string>
+    <string name="slide_2_desc">Cerca la app Vodafone 5G e verifica che sia settata su ON, in caso contrario fai tap e attivala.</string>
+</resources>
