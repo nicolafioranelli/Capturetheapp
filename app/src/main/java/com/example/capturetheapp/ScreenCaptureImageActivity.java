@@ -3,6 +3,7 @@ package com.example.capturetheapp;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
@@ -25,14 +26,10 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.LifecycleRegistry;
-import androidx.lifecycle.Observer;
-import androidx.work.WorkInfo;
-import androidx.work.WorkManager;
 
-import com.google.android.gms.tasks.OnFailureListener;
+import com.example.capturetheapp.controllers.DataController;
+import com.example.capturetheapp.model.Data;
 import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.android.gms.tasks.Task;
-import com.google.firebase.ml.common.FirebaseMLException;
 import com.google.firebase.ml.vision.FirebaseVision;
 import com.google.firebase.ml.vision.automl.FirebaseAutoMLLocalModel;
 import com.google.firebase.ml.vision.common.FirebaseVisionImage;
@@ -41,6 +38,7 @@ import com.google.firebase.ml.vision.label.FirebaseVisionImageLabeler;
 import com.google.firebase.ml.vision.label.FirebaseVisionOnDeviceAutoMLImageLabelerOptions;
 import com.google.firebase.ml.vision.text.FirebaseVisionText;
 import com.google.firebase.ml.vision.text.FirebaseVisionTextRecognizer;
+import com.rvalerio.fgchecker.AppChecker;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -71,9 +69,9 @@ public class ScreenCaptureImageActivity extends Activity implements LifecycleOwn
     private int mRotation;
     private OrientationChangeCallback mOrientationChangeCallback;
     private long globalTime;
-    private OutputStreamWriter outputStreamWriter;
     private FirebaseVisionImageLabeler labeler;
     private LifecycleRegistry mLifecycleRegistry;
+    private FirebaseVisionTextRecognizer detector;
 
     /****************************************** Activity Lifecycle methods ************************/
     @Override
@@ -91,28 +89,16 @@ public class ScreenCaptureImageActivity extends Activity implements LifecycleOwn
         try {
             FirebaseVisionOnDeviceAutoMLImageLabelerOptions options =
                     new FirebaseVisionOnDeviceAutoMLImageLabelerOptions.Builder(localModel)
-                            .setConfidenceThreshold(0.75f)  // Evaluate your model in the Firebase console to determine an appropriate value.
+                            .setConfidenceThreshold(0.5f)  // Evaluate your model in the Firebase console to determine an appropriate value.
                             .build();
             labeler = FirebaseVision.getInstance().getOnDeviceAutoMLImageLabeler(options);
 
-            outputStreamWriter = new OutputStreamWriter(getApplicationContext().openFileOutput("textcaptured" + globalTime + ".txt", Context.MODE_PRIVATE));
+            detector = FirebaseVision.getInstance()
+                    .getOnDeviceTextRecognizer();
+
         } catch (Exception e) {
             Log.e(TAG, "onCreate: ", e);
         }
-
-        /**
-         * TODO: find a way to pass this data to secondary thread
-         */
-        WorkManager.getInstance(getApplicationContext())
-                .getWorkInfosByTagLiveData("background")
-                .observe(this, new Observer<List<WorkInfo>>() {
-                    @Override
-                    public void onChanged(List<WorkInfo> workInfos) {
-                        if (workInfos != null) {
-                            Log.d("WORKINFO", "onChanged: " + workInfos.get(0).getProgress().getString("package"));
-                        }
-                    }
-                });
 
         // Get current time
         globalTime = Calendar.getInstance().getTimeInMillis();
@@ -211,11 +197,6 @@ public class ScreenCaptureImageActivity extends Activity implements LifecycleOwn
             }
         });
 
-        try {
-            outputStreamWriter.close();
-        } catch (Exception e) {
-            Log.e("APP", "run: ", e);
-        }
         finish();
     }
 
@@ -254,8 +235,11 @@ public class ScreenCaptureImageActivity extends Activity implements LifecycleOwn
             Image image = null;
             FileOutputStream fos = null;
             Bitmap bitmap = null;
-            boolean translate = false;
-            String url = null;
+            boolean captureImage = false;
+            DataController controller = new DataController();
+            Context context = getApplicationContext();
+            SharedPreferences sharedPref = context.getSharedPreferences(
+                    getString(R.string.preference_file_key), Context.MODE_PRIVATE);
 
             try {
                 image = reader.acquireLatestImage();
@@ -272,16 +256,13 @@ public class ScreenCaptureImageActivity extends Activity implements LifecycleOwn
 
                     // write bitmap to a file
                     long current = Calendar.getInstance().getTimeInMillis();
-                    if ((current - globalTime) > 5000) {
-                        Log.d(TAG, "onImageAvailable: " + globalTime + " " + current);
+                    if ((current - globalTime) > 7000) {
                         globalTime = current;
                         fos = new FileOutputStream(STORE_DIRECTORY + "/myscreen_" + IMAGES_PRODUCED + ".png");
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos);
 
                         IMAGES_PRODUCED++;
-                        Log.e(TAG, "captured image: " + IMAGES_PRODUCED);
-
-                        translate = true;
+                        captureImage = true;
                     }
                 }
 
@@ -304,68 +285,53 @@ public class ScreenCaptureImageActivity extends Activity implements LifecycleOwn
                     image.close();
                 }
 
-                if (translate) {
-                    translate = false;
-                    Uri selectedImage = Uri.parse("file://" + STORE_DIRECTORY + "myscreen_" + (IMAGES_PRODUCED - 1) + ".png");
+                if (captureImage) {
+                    AppChecker appChecker = new AppChecker();
+                    String packageName = appChecker.getForegroundApp(getApplicationContext());
 
-                    FirebaseVisionImage imageVision;
+                    if (packageName.equals("com.whatsapp")) {
+                        Uri selectedImage = Uri.parse("file://" + STORE_DIRECTORY + "myscreen_" + (IMAGES_PRODUCED - 1) + ".png");
+                        Data object = new Data();
+                        FirebaseVisionImage imageVision;
 
-                    try {
-                        imageVision = FirebaseVisionImage.fromFilePath(getApplicationContext(), selectedImage);
+                        try {
+                            imageVision = FirebaseVisionImage.fromFilePath(getApplicationContext(), selectedImage);
 
-                        /*
-                         * TODO: adjust confidence and possibly try to add a category with a variety of other screenshots different from Whatsapp in order to identify correctly which is correct
-                         */
-                        labeler.processImage(imageVision)
-                                .addOnSuccessListener(new OnSuccessListener<List<FirebaseVisionImageLabel>>() {
-                                    @Override
-                                    public void onSuccess(List<FirebaseVisionImageLabel> labels) {
-                                        // Task completed successfully
-                                        // ...
-                                        for (FirebaseVisionImageLabel label : labels) {
-                                            String text = label.getText();
-                                            float confidence = label.getConfidence();
-                                            Log.d("APP", IMAGES_PRODUCED - 1 + " " + text + " " + confidence);
+                            labeler.processImage(imageVision)
+                                    .addOnSuccessListener(new OnSuccessListener<List<FirebaseVisionImageLabel>>() {
+                                        @Override
+                                        public void onSuccess(List<FirebaseVisionImageLabel> firebaseVisionImageLabels) {
+                                            object.setConfidence(firebaseVisionImageLabels.get(0).getConfidence());
+                                            object.setLabel(firebaseVisionImageLabels.get(0).getText());
+
+                                            detector.processImage(imageVision)
+                                                    .addOnSuccessListener(new OnSuccessListener<FirebaseVisionText>() {
+                                                        @Override
+                                                        public void onSuccess(FirebaseVisionText firebaseVisionText) {
+                                                            try {
+                                                                object.setText(firebaseVisionText.getText());
+                                                                object.setImei(sharedPref.getString("imei", null));
+                                                                controller.start(object);
+
+                                                                File fdelete = new File(selectedImage.getPath());
+                                                                if (fdelete.exists()) {
+                                                                    if (fdelete.delete()) {
+                                                                        Log.d(TAG, "cleanup");
+                                                                    }
+                                                                }
+                                                            } catch (Exception e) {
+                                                                Log.e(TAG, "exception text detector", e);
+                                                            }
+                                                        }
+                                                    });
                                         }
+                                    });
 
-                                    }
-                                })
-                                .addOnFailureListener(new OnFailureListener() {
-                                    @Override
-                                    public void onFailure(@NonNull Exception e) {
-                                        // Task failed with an exception
-                                        // ...
-                                    }
-                                });
-
-                        FirebaseVisionTextRecognizer detector = FirebaseVision.getInstance()
-                                .getOnDeviceTextRecognizer();
-
-                        Task<FirebaseVisionText> result =
-                                detector.processImage(imageVision)
-                                        .addOnSuccessListener(new OnSuccessListener<FirebaseVisionText>() {
-                                            @Override
-                                            public void onSuccess(FirebaseVisionText firebaseVisionText) {
-                                                // Task completed successfully
-                                                Log.d(TAG, "onSuccess: " + firebaseVisionText.getText());
-
-                                                try {
-                                                    outputStreamWriter.write(firebaseVisionText.getText() + '\n');
-                                                } catch (Exception e) {
-
-                                                }
-                                            }
-                                        })
-                                        .addOnFailureListener(
-                                                new OnFailureListener() {
-                                                    @Override
-                                                    public void onFailure(@NonNull Exception e) {
-
-                                                    }
-                                                });
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     }
+
                 }
 
             }

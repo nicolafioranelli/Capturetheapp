@@ -59,7 +59,7 @@ public class ForegroundWorker extends Worker {
                             }
                         }
 
-                        setProgressAsync(new Data.Builder().putString("package", packageName).build());
+                        //setProgressAsync(new Data.Builder().putString("package", packageName).build());
 
                         previousPackageName = packageName;
                         ForegroundWorker.this.packageName = packageName;

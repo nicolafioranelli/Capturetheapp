@@ -10,4 +10,6 @@
 
     <string name="slide_2_title">Massima velocità</string>
     <string name="slide_2_desc">Cerca la app Vodafone 5G e verifica che sia settata su ON, in caso contrario fai tap e attivala.</string>
+
+    <string name="preference_file_key">preferences</string>
 </resources>
